@@ -10,13 +10,11 @@ import bisect
 from sklearn import svm
 
 
-
-
 OMP_NUM_THREADS = "20"
 
 
 INCR = 25000
-MAX_DATASET = 25000
+MAX_DATASET = 50000
 
 D2_MIN_BOUND = 0.05
 D2_MIN_RANGE = 0.013
@@ -71,7 +69,7 @@ class Trainer:
             dists.append(line_hard[1:])
             self.ts_fit.append(line_hard[0])
             self.label.append(0)
-        with open ("ts_fit.txt", "w") as f:
+        with open("ts_fit.txt", "w") as f:
             for item in self.ts_fit:
                 f.write("{}\n".format(item))
 
@@ -79,7 +77,7 @@ class Trainer:
         del line2
 
         data = np.zeros([len(dists), len(self.rs)*self.nType+1])
-        #calculate structure functions
+        # calculate structure functions
         for j in range(0, len(dists)):
             for jj in range(1, len(dists[j])-1, 2):
                 k = float(dists[j][jj+1])
@@ -99,7 +97,7 @@ class Trainer:
             self.enabled = np.zeros(0)
             self.processedData = np.zeros(0)
             return
-        #normalize data
+        # normalize data
         self.mean = np.zeros(len(data[0]))
         self.stddev = np.zeros(len(data[0]))
         self.enabled = np.zeros(len(data[0]))
@@ -127,8 +125,8 @@ class Trainer:
         line2 = file2.readlines()
         file1.close()
         file2.close()
-        #random.shuffle(line1)
-        #random.shuffle(line2)
+        # random.shuffle(line1)
+        # random.shuffle(line2)
         dists = []
         self.ts_val = []
         self.label = []
@@ -141,17 +139,15 @@ class Trainer:
             dists.append(line_hard[1:])
             self.ts_val.append(line_hard[0])
             self.label.append(0)
-        with open ("ts_val.txt", "w") as f:
+        with open("ts_val.txt", "w") as f:
             for elem in self.ts_val:
                 f.write("{}\n".format(elem))
-            
-
 
         del line1
         del line2
 
         data = np.zeros([len(dists), len(self.rs)*self.nType+1])
-        #calculate structure functions
+        # calculate structure functions
         for j in range(0, len(dists)):
             for jj in range(1, len(dists[j])-1, 2):
                 k = float(dists[j][jj+1])
@@ -165,7 +161,7 @@ class Trainer:
                     data[j, index2+1] += remainder
             data[j, 0] = dists[j][0]
 
-        #normalize data
+        # normalize data
         self.processedData = [[] for _ in range(len(data))]
         for i in range(0, len(data[0])):
             if self.enabled[i]:
@@ -192,20 +188,19 @@ class Trainer:
         print(self.trainAccuracy, self.validateAccuracy)
 
     def reValidate(self):
-        #redo validation using ALL data
+        # redo validation using ALL data
         self.ValidationData = self.processedData
         self.ValidationLabel = self.label
-        self.validateAccuracy = self.clf.score(self.ValidationData, self.ValidationLabel)
+        self.validateAccuracy = self.clf.score(
+            self.ValidationData, self.ValidationLabel)
         return self.validateAccuracy
-    
+
     def predict(self):
         self.predicted_labels = self.clf.predict(self.ValidationData)
         return self.predicted_labels
 
-
-
     def output(self):
-         #transform and output the hyperplane
+         # transform and output the hyperplane
         cumsumEnabled = np.cumsum(self.enabled)
         cept = self.clf.intercept_
         ci = np.zeros(len(self.mean))
@@ -232,7 +227,6 @@ class Trainer:
                 ofile.write(str(self.rs[i]))
                 ofile.write("\n")
         ofile.close()
-        
 
 
 def mytrainer(myType, nType):
@@ -262,14 +256,12 @@ def mytrainer(myType, nType):
         f2.write("\n")
         t.output()
         t.printResult()
-    predicted_labels =t.predict()
+    predicted_labels = t.predict()
     with open("ts_validation.txt", "w") as f:
         f.write("ts,predicted_label,truth\n")
-        for i,label in enumerate(predicted_labels):
-            f.write("{},{},{}\n".format(t.ts_val[i], label, t.ValidationLabel[i]))
-        
-
-    
+        for i, label in enumerate(predicted_labels):
+            f.write("{},{},{}\n".format(
+                t.ts_val[i], label, t.ValidationLabel[i]))
 
 
 if __name__ == "__main__":
@@ -284,10 +276,16 @@ if __name__ == "__main__":
         except:
             pass
         os.chdir(path)
-        input1 = "{} {} {} {} {} {} {} {} {} {} {} Exit\n".format(PROG, MINTRAJ_A, MAXTRAJ_A,
-                                                                  INCR, MAX_DATASET, N_RANGE_COEFF, PREFIX_A, i, D2_MIN_BOUND, D2_MIN_RANGE, FORECAST_SPAN)
-        input2 = "{} {} {} {} {} {} {} {} {} {} {} Exit\n".format(PROG, MINTRAJ_B, MAXTRAJ_B,
-                                                                  INCR, MAX_DATASET, N_RANGE_COEFF, PREFIX_B, i, D2_MIN_BOUND, D2_MIN_RANGE, FORECAST_SPAN)
+        if i == 1:
+            input1 = "{} {} {} {} {} {} {} {} {} {} {} {} Exit\n".format(PROG, MINTRAJ_A, MAXTRAJ_A,
+                                                                         INCR, MAX_DATASET, N_RANGE_COEFF, PREFIX_A, i, D2_MIN_BOUND, D2_MIN_RANGE, FORECAST_SPAN, 1)
+            input2 = "{} {} {} {} {} {} {} {} {} {} {} {} Exit\n".format(PROG, MINTRAJ_B, MAXTRAJ_B,
+                                                                         INCR, MAX_DATASET, N_RANGE_COEFF, PREFIX_B, i, D2_MIN_BOUND, D2_MIN_RANGE, FORECAST_SPAN, 1)
+        else:
+            input1 = "{} {} {} {} {} {} {} {} {} {} {} {} Exit\n".format(PROG, MINTRAJ_A, MAXTRAJ_A,
+                                                                         INCR, MAX_DATASET, N_RANGE_COEFF, PREFIX_A, i, D2_MIN_BOUND, D2_MIN_RANGE, FORECAST_SPAN, 0)
+            input2 = "{} {} {} {} {} {} {} {} {} {} {} {} Exit\n".format(PROG, MINTRAJ_B, MAXTRAJ_B,
+                                                                         INCR, MAX_DATASET, N_RANGE_COEFF, PREFIX_B, i, D2_MIN_BOUND, D2_MIN_RANGE, FORECAST_SPAN, 0)
         with open(path + "/input.txt", "w") as f_in1:
             f_in1.write(input1)
         with open(path + "/input2.txt", "w") as f_in2:
@@ -312,10 +310,7 @@ if __name__ == "__main__":
             except:
                 pass
             os.chdir(subpath)
-            processes.append(Process(target=mytrainer, args=(j,i)))
+            processes.append(Process(target=mytrainer, args=(j, i)))
             processes[j].start()
         for process in processes:
             process.join()
-
-
-           

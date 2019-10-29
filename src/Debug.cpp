@@ -723,9 +723,9 @@ int Debug()
 		double neighbors_rangeCoeff;
 		//had to hard-code it because cin cannot tolerate spaces
 		//std::string prefix = "/media/scratch/Synced/DEM_data/AR=2.56/ForBetweenness4-long/DEM/postxyz/particle", outFilePrefix;
-		std::string prefix = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/DEM/postxyz/particle", outFilePrefix;
+		std::string prefix = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/DEM/postxyz/particle", d2minout = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/d2min", outFilePrefix;
 		int numType;
-		int minTraj, maxTraj, trajIncrement, maxDataSetSize, minusStep;
+		int minTraj, maxTraj, trajIncrement, maxDataSetSize, minusStep, d2min_fileout;
 		std::cin >> minTraj >> maxTraj >> trajIncrement >> maxDataSetSize;
 		std::cin >> neighbors_rangeCoeff;
 		std::cin >> outFilePrefix;
@@ -734,6 +734,7 @@ int Debug()
 		double d2minBound, d2minRange;
 		std::cin >> d2minBound >> d2minRange;
 		std::cin >> minusStep;
+		std::cin >> d2min_fileout;
 		std::cerr << minusStep << "\n";
 
 		const double rmin = 0.0045, rmax = 0.0075;
@@ -817,7 +818,6 @@ int Debug()
 			ss0 << prefix << j;
 			ss1 << prefix << (j + trajIncrement);
 			int offset = j - (minusStep * trajIncrement);
-			std::cerr << "Offset: " << offset << "\n";
 			ss2 << prefix << offset;
 
 			/*std::cerr << "ss0: " << ss0.str() << "\n";
@@ -837,11 +837,21 @@ int Debug()
 				std::vector<double> d2min(c0.NumParticle(), 0.0);
 				for (int i = 0; i < c0.NumParticle(); i++)
 					d2min[i] = ::D2Min(c0, c1, i, d2minRange);
+				long double avg = std::accumulate(d2min.begin(), d2min.end(), 0.0);
+				if (d2min_fileout){
+					std::stringstream fname;
+					fname << d2minout << "/" << "d2min_" << j << ".txt";
+					std::ofstream outf(fname.str());
+					for (auto const &e: d2min){
+						outf << e << "\n";
+					}
+					outf.close();
 
+				}
 				for (int i = 0; i < c2.NumParticle(); i++)
 				{
 					int type = std::floor(std::log(c2.GetCharacteristics(i).radius / rmin) / logRRatioMax * numType);
-
+					//std::cerr << type << "\n";
 					if (type < 0)
 					{
 						std::cerr << "warning : radius less than rmin, file=" << ss0.str() << ", i=" << i << ", radius=" << c2.GetCharacteristics(i).radius << std::endl;
@@ -865,6 +875,8 @@ int Debug()
 							nhard[type]++;
 							outputH = true;
 						}
+				
+						
 					}
 
 					//debug temp
