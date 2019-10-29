@@ -16,7 +16,7 @@ OMP_NUM_THREADS = "20"
 
 
 INCR = 25000
-MAX_DATASET = 20000
+MAX_DATASET = 25000
 
 D2_MIN_BOUND = 0.05
 D2_MIN_RANGE = 0.013
@@ -24,7 +24,7 @@ N_RANGE_COEFF = 10.0
 PREFIX_A = "train"
 PREFIX_B = "test"
 
-FORECAST_SPAN = 500
+FORECAST_SPAN = 50
 
 
 MINTRAJ_A = 125000 + (FORECAST_SPAN * INCR)
@@ -60,18 +60,20 @@ class Trainer:
 #        random.shuffle(line1)
 #        random.shuffle(line2)
         dists = []
-        self.ts_hard_fit = []
-        self.ts_soft_fit = []
+        self.ts_fit = []
         self.label = []
         for d1, d2 in zip(line1, line2):
             line_soft = d1.split(' ')
             line_hard = d2.split(' ')
             dists.append(line_soft[1:])
-            self.ts_soft_fit.append(line_soft[0])
+            self.ts_fit.append(line_soft[0])
             self.label.append(1)
             dists.append(line_hard[1:])
-            self.ts_hard_fit.append(line_hard[0])
+            self.ts_fit.append(line_hard[0])
             self.label.append(0)
+        with open ("ts_fit.txt", "w") as f:
+            for item in self.ts_fit:
+                f.write("{}\n".format(item))
 
         del line1
         del line2
@@ -128,18 +130,22 @@ class Trainer:
         #random.shuffle(line1)
         #random.shuffle(line2)
         dists = []
-        self.ts_hard_test = []
-        self.ts_soft_test = []
+        self.ts_val = []
         self.label = []
         for d1, d2 in zip(line1, line2):
             line_soft = d1.split(' ')
             line_hard = d2.split(' ')
             dists.append(line_soft[1:])
-            self.ts_soft_test.append(line_soft[0])
+            self.ts_val.append(line_soft[0])
             self.label.append(1)
             dists.append(line_hard[1:])
-            self.ts_hard_test.append(line_hard[0])
+            self.ts_val.append(line_hard[0])
             self.label.append(0)
+        with open ("ts_val.txt", "w") as f:
+            for elem in self.ts_val:
+                f.write("{}\n".format(elem))
+            
+
 
         del line1
         del line2
@@ -187,10 +193,16 @@ class Trainer:
 
     def reValidate(self):
         #redo validation using ALL data
-        ValidationData = self.processedData
-        ValidationLabel = self.label
-        self.validateAccuracy = self.clf.score(ValidationData, ValidationLabel)
+        self.ValidationData = self.processedData
+        self.ValidationLabel = self.label
+        self.validateAccuracy = self.clf.score(self.ValidationData, self.ValidationLabel)
         return self.validateAccuracy
+    
+    def predict(self):
+        self.predicted_labels = self.clf.predict(self.ValidationData)
+        return self.predicted_labels
+
+
 
     def output(self):
          #transform and output the hyperplane
@@ -250,6 +262,14 @@ def mytrainer(myType, nType):
         f2.write("\n")
         t.output()
         t.printResult()
+    predicted_labels =t.predict()
+    with open("ts_validation.txt", "w") as f:
+        f.write("ts,predicted_label,truth\n")
+        for i,label in enumerate(predicted_labels):
+            f.write("{},{},{}\n".format(t.ts_val[i], label, t.ValidationLabel[i]))
+        
+
+    
 
 
 if __name__ == "__main__":
