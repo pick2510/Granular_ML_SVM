@@ -835,18 +835,35 @@ int Debug()
 			if (c0.NumParticle() != 0)
 			{
 				std::vector<double> d2min(c0.NumParticle(), 0.0);
-				for (int i = 0; i < c0.NumParticle(); i++)
-					d2min[i] = ::D2Min(c0, c1, i, d2minRange);
-				long double avg = std::accumulate(d2min.begin(), d2min.end(), 0.0);
-				if (d2min_fileout){
-					std::stringstream fname;
-					fname << d2minout << "/" << "d2min_" << j << ".txt";
-					std::ofstream outf(fname.str());
-					for (auto const &e: d2min){
-						outf << e << "\n";
-					}
-					outf.close();
 
+				//long double avg = std::accumulate(d2min.begin(), d2min.end(), 0.0);
+				if (d2min_fileout)
+				{
+					std::vector<double> affine_trans(c0.NumParticle(), 0.0);
+					for (int i = 0; i < c0.NumParticle(); i++)
+						d2min[i] = ::D2Min(c0, c1, i, d2minRange, &affine_trans[i]);
+					std::stringstream fname_d2min, fname_affine;
+					fname_d2min << d2minout << "/"
+						  << "d2min_" << std::setw(9) << std::setfill('0') << j << ".txt";
+				    fname_affine << d2minout << "/"
+						  << "affine_" << std::setw(9) << std::setfill('0') << j << ".txt";
+					std::ofstream outf_d2min(fname_d2min.str());
+					std::ofstream outf_affine(fname_affine.str());
+					for (auto const &e : d2min)
+					{
+						outf_d2min << e << "\n";
+					}
+					outf_d2min.close();
+					for (auto const &e : affine_trans)
+					{
+						outf_affine << e << "\n";
+					}
+					outf_affine.close();
+				}
+				else
+				{
+					for (int i = 0; i < c0.NumParticle(); i++)
+						d2min[i] = ::D2Min(c0, c1, i, d2minRange);
 				}
 				for (int i = 0; i < c2.NumParticle(); i++)
 				{
@@ -875,8 +892,6 @@ int Debug()
 							nhard[type]++;
 							outputH = true;
 						}
-				
-						
 					}
 
 					//debug temp
@@ -894,7 +909,7 @@ int Debug()
 				}
 			}
 		}
-#pragma omp parallel for		
+#pragma omp parallel for
 		for (int i = 0; i < numType; i++)
 		{
 			std::sort(ovhard[i].begin(), ovhard[i].end());
