@@ -124,6 +124,7 @@ int main(int argc, char *argv[])
 	std::map<int, double> PE_sum;
 	radiusfilename << radius_prefix << "RadiusSorted.txt";
 	auto radius = get_radius(radiusfilename.str());
+	int round = 0;
 #pragma omp parallel for
 	for (int i = start; i < stop; i += increment)
 	{
@@ -132,8 +133,9 @@ int main(int argc, char *argv[])
 		double ij = get_pe_sum(fname.str(), radius);
 #pragma omp critical
 		{
+			round++;
 			PE_sum[i] = ij;
-			std::cout << "i: " << i << " PE: " << ij << "\n";
+			std::cout << "i: " << i << " PE: " << ij << " Round: " << round << "\n";
 		}
 	}
 	std::ofstream PEout("PE.txt");
