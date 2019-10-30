@@ -1,9 +1,4 @@
-#include <vector>
-#include <algorithm>
-#include <fstream>
-#include <iostream>
-#include <map>
-#include <sstream>
+#include "bits/stdc++.h"
 #include <Eigen/Dense>
 #include "omp.h"
 #include "utils.h"
@@ -13,6 +8,9 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 	std::string line;
 	std::ifstream contactfile(filename);
 	int num_contacts = 0, num_properties = 0;
+	const double Ystar = 6.5E11 / (2 * (1 - std::pow(0.25, 2)));
+	const double Gstar = 6.5E11 / (4 * (2 - .25) * (1 + .25));
+
 	if (contactfile.is_open())
 	{
 		while (std::getline(contactfile, line))
@@ -25,29 +23,70 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 			}
 			num_contacts++;
 		}
-		contactfile.clear();
-		contactfile.seekg(0, std::ios::beg);
-		Eigen::MatrixXd contact_m(num_contacts, num_properties);
-		int i = 0;
-		while (std::getline(contactfile, line))
-		{
-			std::vector<std::string> splitted_line;
-			split(line, splitted_line);
-			int j = 0;
-			for (auto &elem : splitted_line)
-			{
-				std::stringstream(elem) >> contact_m(i, j);
-				j++;
-			}
-			i++;
-		}
 	}
 	else
 	{
 		std::cout << "ERROR Contactfile " << filename << " is not there";
 		std::exit(-1);
 	}
-	return 0.0;
+	Eigen::MatrixXd contact_m(num_contacts, num_properties);
+	contactfile.clear();
+	contactfile.seekg(0, std::ios::beg);
+	int i = 0;
+	while (std::getline(contactfile, line))
+	{
+		std::vector<std::string> splitted_line;
+		split(line, splitted_line);
+		int j = 0;
+		for (auto &elem : splitted_line)
+		{
+			std::stringstream(elem) >> contact_m(i, j);
+
+			j++;
+		}
+		i++;
+	}
+
+	Eigen::MatrixXd calc(contact_m.rows(), 10);
+	for (int row = 0; row < contact_m.rows(); row++)
+	{
+		calc(row, calc_layout::rad1) = radius.at(contact_m(row, ContactTXTColumns::p1_id));
+		calc(row, calc_layout::rad2) = radius.at(contact_m(row, ContactTXTColumns::p2_id));
+		calc(row, calc_layout::Radstar) = (calc(row, calc_layout::rad1) * calc(row, calc_layout::rad2) /
+										   (calc(row, calc_layout::rad1) + calc(row, calc_layout::rad2)));
+		calc(row, calc_layout::kn) =
+			4 / 3.0 * Ystar *
+			std::sqrt(calc(row, calc_layout::Radstar) *
+					  contact_m(row, ContactTXTColumns::contact_overlap));
+		calc(row, calc_layout::kt) =
+			8.0 * Gstar *
+			std::sqrt(calc(row, calc_layout::Radstar) *
+					  contact_m(row, ContactTXTColumns::contact_overlap));
+		calc(row, calc_layout::Fnor) =
+			std::sqrt(std::pow(contact_m(row, ContactTXTColumns::cn_force_x), 2) +
+					  std::pow(contact_m(row, ContactTXTColumns::cn_force_y), 2) +
+					  std::pow(contact_m(row, ContactTXTColumns::cn_force_z), 2));
+		calc(row, calc_layout::Ftan) =
+			std::sqrt(std::pow(contact_m(row, ContactTXTColumns::ct_force_x), 2) +
+					  std::pow(contact_m(row, ContactTXTColumns::ct_force_y), 2) +
+					  std::pow(contact_m(row, ContactTXTColumns::ct_force_z), 2));
+		calc(row, calc_layout::Penor) =
+			0.5 * (std::pow(calc(row, calc_layout::Fnor), 2) /
+				   calc(row, calc_layout::kn));
+		calc(row, calc_layout::Petan) =
+			0.5 * (std::pow(calc(row, calc_layout::Ftan), 2) /
+				   calc(row, calc_layout::kt));
+		calc(row, calc_layout::Petot) = calc(row, calc_layout::Penor) + calc(row, calc_layout::Petan);
+	}
+	return calc.row(calc_layout::Petot).sum();
+}
+
+void output(std::ofstream &out, std::map<int, double> &PE)
+{
+	for (auto &elem : PE)
+	{
+		out << elem.first << " " << elem.second << "\n";
+	}
 }
 
 std::map<int, double> get_radius(const std::string &filename)
@@ -80,16 +119,28 @@ int main(int argc, char *argv[])
 {
 	std::string chainprefix = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/DEM/postchain/", radius_prefix = "/home/strebdom/forOmid/";
 	int start, increment, stop;
-	std::map<int, double> PE_sum;
 	std::cin >> start >> increment >> stop;
 	std::stringstream radiusfilename;
+	std::map<int, double> PE_sum;
 	radiusfilename << radius_prefix << "RadiusSorted.txt";
 	auto radius = get_radius(radiusfilename.str());
+#pragma omp parallel for
 	for (int i = start; i < stop; i += increment)
 	{
 		std::stringstream fname;
 		fname << chainprefix << "contact" << i << ".txt";
 		double ij = get_pe_sum(fname.str(), radius);
+#pragma omp critical
+		{
+			PE_sum[i] = ij;
+			std::cout << "i: " << i << " PE: " << ij << "\n";
+		}
 	}
+	std::ofstream PEout("PE.txt");
+	if (PEout.is_open())
+	{
+		output(PEout, PE_sum);
+	}
+
 	return 0;
 }
