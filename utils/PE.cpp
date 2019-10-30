@@ -134,6 +134,7 @@ int main(int argc, char *argv[])
 		{
 			round++;
 			PE_sum[i] = ij;
+			std::cout << std::setprecision(16);
 			std::cout << "i: " << i << " PE: " << ij << " Round: " << round << "\n";
 		}
 	}
