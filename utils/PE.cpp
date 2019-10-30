@@ -8,37 +8,47 @@
 #include "omp.h"
 #include "utils.h"
 
-
-double get_pe_sum(const std::string &filename, const std::map<int, double> &radius){
+double get_pe_sum(const std::string &filename, const std::map<int, double> &radius)
+{
 	std::string line;
 	std::ifstream contactfile(filename);
-	int num_contacts=0, num_properties = 0;
-	if (contactfile.is_open()){
-		while (std::getline(contactfile, line)){
-			if (num_contacts == 0){
+	int num_contacts = 0, num_properties = 0;
+	if (contactfile.is_open())
+	{
+		while (std::getline(contactfile, line))
+		{
+			if (num_contacts == 0)
+			{
 				std::vector<std::string> splitted_line;
 				split(line, splitted_line);
 				num_properties = splitted_line.size();
-
 			}
-			num_contacts++;	
+			num_contacts++;
 		}
 		contactfile.clear();
 		contactfile.seekg(0, std::ios::beg);
 		Eigen::MatrixXd contact_m(num_contacts, num_properties);
-
-
-
+		int i = 0;
+		while (std::getline(contactfile, line))
+		{
+			std::vector<std::string> splitted_line;
+			split(line, splitted_line);
+			int j = 0;
+			for (auto &elem : splitted_line)
+			{
+				std::stringstream(elem) >> contact_m(i, j);
+				j++;
+			}
+			i++;
+		}
 	}
-	else {
+	else
+	{
 		std::cout << "ERROR Contactfile " << filename << " is not there";
 		std::exit(-1);
 	}
-
+	return 0.0;
 }
-
-
-
 
 std::map<int, double> get_radius(const std::string &filename)
 {
@@ -57,14 +67,14 @@ std::map<int, double> get_radius(const std::string &filename)
 			std::stringstream(splitted_line[1]) >> val;
 			radmap[index] = val;
 		}
-	} else {
+	}
+	else
+	{
 		std::cout << "NO RADIUSFILE\n";
-		std::exit(-1); 
+		std::exit(-1);
 	}
 	return radmap;
 }
-
-
 
 int main(int argc, char *argv[])
 {
@@ -79,6 +89,7 @@ int main(int argc, char *argv[])
 	{
 		std::stringstream fname;
 		fname << chainprefix << "contact" << i << ".txt";
+		double ij = get_pe_sum(fname.str(), radius);
 	}
 	return 0;
 }
