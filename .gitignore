@@ -28,6 +28,7 @@
 *.txt
 *.png
 *.ipynb
+utils/PE
 
 # Executables
 *.exe

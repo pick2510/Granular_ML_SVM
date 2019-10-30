@@ -14,7 +14,7 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 	if (contactfile.is_open())
 	{
 		while (std::getline(contactfile, line))
-		{
+		{	
 			if (num_contacts == 0)
 			{
 				std::vector<std::string> splitted_line;
@@ -29,19 +29,16 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 		std::cout << "ERROR Contactfile " << filename << " is not there";
 		std::exit(-1);
 	}
-	Eigen::MatrixXd contact_m(num_contacts, num_properties);
+	Eigen::MatrixXd contact_m = Eigen::MatrixXd::Constant(num_contacts, num_properties, 0.0);
 	contactfile.clear();
 	contactfile.seekg(0, std::ios::beg);
 	int i = 0;
-	while (std::getline(contactfile, line))
-	{
-		std::vector<std::string> splitted_line;
-		split(line, splitted_line);
+	while (std::getline(contactfile, line)){
+		std::stringstream ll(line);
+		std::string splitted;
 		int j = 0;
-		for (auto &elem : splitted_line)
-		{
-			std::stringstream(elem) >> contact_m(i, j);
-
+		while (std::getline(ll, splitted, ' ')){
+			std::stringstream(splitted) >> contact_m(i, j);
 			j++;
 		}
 		i++;
@@ -50,6 +47,7 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 	Eigen::MatrixXd calc(contact_m.rows(), 10);
 	for (int row = 0; row < contact_m.rows(); row++)
 	{
+		
 		calc(row, calc_layout::rad1) = radius.at(contact_m(row, ContactTXTColumns::p1_id));
 		calc(row, calc_layout::rad2) = radius.at(contact_m(row, ContactTXTColumns::p2_id));
 		calc(row, calc_layout::Radstar) = (calc(row, calc_layout::rad1) * calc(row, calc_layout::rad2) /
@@ -78,7 +76,8 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 				   calc(row, calc_layout::kt));
 		calc(row, calc_layout::Petot) = calc(row, calc_layout::Penor) + calc(row, calc_layout::Petan);
 	}
-	return calc.row(calc_layout::Petot).sum();
+	return calc.col(calc_layout::Petot).sum();
+
 }
 
 void output(std::ofstream &out, std::map<int, double> &PE)

@@ -6,7 +6,7 @@ B=sprintf('ParticleID.txt');
 ID=load(B);
 npar = length(ID);
 
-out = fopen('PE.txt', 'w');
+out = fopen('PE_matlab.txt', 'w');
 
 for j=1000000:25000:99975000
     j
