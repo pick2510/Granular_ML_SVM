@@ -3,6 +3,26 @@
 #include "omp.h"
 #include "utils.h"
 
+unsigned int FileRead(std::istream &is, std::vector<char> &buff)
+{
+	is.read(&buff[0], buff.size());
+	return is.gcount();
+}
+
+unsigned int CountLines(const std::vector<char> &buff, int sz)
+{
+	int newlines = 0;
+	const char *p = &buff[0];
+	for (int i = 0; i < sz; i++)
+	{
+		if (p[i] == '\n')
+		{
+			newlines++;
+		}
+	}
+	return newlines;
+}
+
 double get_pe_sum(const std::string &filename, const std::map<int, double> &radius)
 {
 	std::string line;
@@ -13,15 +33,17 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 
 	if (contactfile.is_open())
 	{
-		while (std::getline(contactfile, line))
-		{	
-			if (num_contacts == 0)
-			{
-				std::vector<std::string> splitted_line;
-				split(line, splitted_line);
-				num_properties = splitted_line.size();
-			}
-			num_contacts++;
+		std::getline(contactfile, line);
+		std::vector<std::string> splitted_line;
+		split(line, splitted_line);
+		num_properties = splitted_line.size();
+		contactfile.clear();
+		contactfile.seekg(0, std::ios::beg);
+		const int SZ = 1024 * 1024;
+		std::vector<char> buff(SZ);
+		while (int cc = FileRead(contactfile, buff))
+		{
+			num_contacts += CountLines(buff, cc);
 		}
 	}
 	else
@@ -33,11 +55,13 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 	contactfile.clear();
 	contactfile.seekg(0, std::ios::beg);
 	int i = 0;
-	while (std::getline(contactfile, line)){
+	while (std::getline(contactfile, line))
+	{
 		std::stringstream ll(line);
 		std::string splitted;
 		int j = 0;
-		while (std::getline(ll, splitted, ' ')){
+		while (std::getline(ll, splitted, ' '))
+		{
 			std::stringstream(splitted) >> contact_m(i, j);
 			j++;
 		}
@@ -45,9 +69,9 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 	}
 
 	Eigen::MatrixXd calc(contact_m.rows(), 10);
+	double Pe_tot{0.0};
 	for (int row = 0; row < contact_m.rows(); row++)
 	{
-		
 		calc(row, calc_layout::rad1) = radius.at(contact_m(row, ContactTXTColumns::p1_id));
 		calc(row, calc_layout::rad2) = radius.at(contact_m(row, ContactTXTColumns::p2_id));
 		calc(row, calc_layout::Radstar) = (calc(row, calc_layout::rad1) * calc(row, calc_layout::rad2) /
@@ -75,9 +99,9 @@ double get_pe_sum(const std::string &filename, const std::map<int, double> &radi
 			0.5 * (std::pow(calc(row, calc_layout::Ftan), 2) /
 				   calc(row, calc_layout::kt));
 		calc(row, calc_layout::Petot) = calc(row, calc_layout::Penor) + calc(row, calc_layout::Petan);
+		Pe_tot += calc(row, calc_layout::Petot);
 	}
-	return calc.col(calc_layout::Petot).sum();
-
+	return Pe_tot;
 }
 
 void output(std::ofstream &out, std::map<int, double> &PE)
