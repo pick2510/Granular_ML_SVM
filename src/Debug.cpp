@@ -809,7 +809,7 @@ int Debug()
 				output.push_back(std::make_pair(ts, ss.str()));
 			}
 		};
-
+		std::map<int, std::pair<double, double>> ts_d2min, ts_affine;
 		std::vector<size_t> nsoft(numType, 0), nhard(numType, 0);
 #pragma omp parallel for
 		for (int j = minTraj; j < maxTraj - 1; j += trajIncrement)
@@ -844,21 +844,32 @@ int Debug()
 						d2min[i] = ::D2Min(c0, c1, i, d2minRange, &affine_trans[i]);
 					std::stringstream fname_d2min, fname_affine;
 					fname_d2min << d2minout << "/"
-						  << "d2min_" << std::setw(9) << std::setfill('0') << j << ".txt";
-				    fname_affine << d2minout << "/"
-						  << "affine_" << std::setw(9) << std::setfill('0') << j << ".txt";
+								<< "d2min_" << std::setw(9) << std::setfill('0') << j << ".txt";
+					fname_affine << d2minout << "/"
+								 << "affine_" << std::setw(9) << std::setfill('0') << j << ".txt";
 					std::ofstream outf_d2min(fname_d2min.str());
 					std::ofstream outf_affine(fname_affine.str());
+					double d2min_sum{0};
 					for (auto const &e : d2min)
 					{
+						if (!std::isnan(e))
+							d2min_sum += e;
 						outf_d2min << e << "\n";
 					}
 					outf_d2min.close();
+					double affine_sum{0};
 					for (auto const &e : affine_trans)
 					{
+						if (!std::isnan(e))
+							affine_sum += e;
 						outf_affine << e << "\n";
 					}
 					outf_affine.close();
+#pragma omp critical
+					{
+						ts_d2min[j] = std::make_pair(d2min_sum, d2min_sum / c0.NumParticle());
+						ts_affine[j] = std::make_pair(affine_sum, affine_sum / c0.NumParticle());
+					}
 				}
 				else
 				{
@@ -924,6 +935,32 @@ int Debug()
 			}
 		}
 
+		if (d2min_fileout)
+		{
+			std::stringstream ss_d2min, ss_affine;
+			ss_d2min << d2minout << "/ts_d2min.txt";
+			ss_affine << d2minout << "/ts_affine.txt";
+			std::ofstream of_d2min(ss_d2min.str()), of_affine(ss_affine.str());
+			of_d2min << "ts sum avg\n";
+			of_affine << "ts sum avg\n";
+#pragma omp parallel sections
+			{
+#pragma omp section
+				{
+					for (auto const &elem : ts_d2min)
+					{
+						of_d2min << elem.first << " " << elem.second.first << " " << elem.second.second << "\n";
+					}
+				}
+#pragma omp section 
+				{
+					for (auto const &elem : ts_affine)
+					{
+						of_affine << elem.first << " " << elem.second.first << " " << elem.second.second << "\n";
+					}
+				}
+			}
+		}
 		return 0;
 	}
 }
