@@ -14,15 +14,15 @@ OMP_NUM_THREADS = "20"
 
 
 INCR = 25000
-MAX_DATASET = 50000
+MAX_DATASET = 25000
 
-D2_MIN_BOUND = 0.05
+D2_MIN_BOUND = 0.0005
 D2_MIN_RANGE = 0.013
 N_RANGE_COEFF = 10.0
 PREFIX_A = "train"
 PREFIX_B = "test"
 
-FORECAST_SPAN = 50
+FORECAST_SPAN = 0
 
 
 MINTRAJ_A = 125000 + (FORECAST_SPAN * INCR)
@@ -30,9 +30,11 @@ MAXTRAJ_A = 250000000
 MINTRAJ_B = MAXTRAJ_A
 MAXTRAJ_B = 380150000
 
+MAXTRAJ_A = MAXTRAJ_B
+
 PROG = "Debug"
 
-DIRLIST = [1, 2]
+DIRLIST = [1]
 
 
 increment = 0.1
@@ -299,9 +301,9 @@ if __name__ == "__main__":
         print(input1)
         print(input2)
         p1 = subprocess.Popen(prog, stderr=f_err1, stdout=f_out1, stdin=f_in1)
-        p2 = subprocess.Popen(prog, stderr=f_err2, stdout=f_out2, stdin=f_in2)
+        #p2 = subprocess.Popen(prog, stderr=f_err2, stdout=f_out2, stdin=f_in2)
         p1.wait()
-        p2.wait()
+        #p2.wait()
         processes = []
         for j in range(0, i):
             subpath = path + "/" + str(j)

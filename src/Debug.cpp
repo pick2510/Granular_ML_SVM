@@ -654,7 +654,7 @@ void DisplaySSPackingMovie_D2Min_softness(ConfigurationPack &pk, const std::vect
 	DisplaySSPackingMovie_DoubleColorIndex_transparency_rainbow(pk, RadiusA, RadiusB, getD2minFunc, getSoftnessFunc, pk.NumConfig() - D2min_Interval);
 }
 
-Configuration readOmidPacking(std::fstream &ifile)
+Configuration readOmidPacking(std::fstream &ifile, const std::string &fname)
 {
 	if (!ifile.good())
 		return Configuration();
@@ -690,8 +690,8 @@ Configuration readOmidPacking(std::fstream &ifile)
 	auto compareFunc = [](const particle &left, const particle &right) -> bool {
 		return left.id < right.id;
 	};
-	std::sort(ps.begin(), ps.end(), compareFunc);
 
+	std::sort(ps.begin(), ps.end(), compareFunc);
 	for (auto p : ps)
 		pak.Insert(AtomInfo("A", p.radius), pak.CartesianCoord2RelativeCoord(p.car));
 	return pak;
@@ -699,7 +699,7 @@ Configuration readOmidPacking(std::fstream &ifile)
 Configuration readOmidPacking(const std::string &prefix)
 {
 	std::fstream ifile(prefix + std::string(".txt"), std::fstream::in);
-	return readOmidPacking(ifile);
+	return readOmidPacking(ifile, prefix);
 }
 
 bool file_exist(std::stringstream &fileName)
@@ -718,187 +718,214 @@ void shear2D(Configuration &c, double strain)
 }
 int Debug()
 {
+	typedef std::vector<std::pair<int, std::string>> sortable_output;
+	double neighbors_rangeCoeff;
+	//had to hard-code it because cin cannot tolerate spaces
+	//std::string prefix = "/media/scratch/Synced/DEM_data/AR=2.56/ForBetweenness4-long/DEM/postxyz/particle", outFilePrefix;
+	std::string prefix = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/DEM/postxyz/particle", d2minout = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/d2min", outFilePrefix;
+	int numType;
+	int minTraj, maxTraj, trajIncrement, maxDataSetSize, minusStep, d2min_fileout;
+	std::cin >> minTraj >> maxTraj >> trajIncrement >> maxDataSetSize;
+	std::cin >> neighbors_rangeCoeff;
+	std::cin >> outFilePrefix;
+	std::cin >> numType;
+	std::vector<std::pair<int, std::stringstream>> vsoft, hard;
+	double d2minBound, d2minRange;
+	std::cin >> d2minBound >> d2minRange;
+	std::cin >> minusStep;
+	std::cin >> d2min_fileout;
+
+	std::cerr << minusStep << "\n";
+	std::ofstream d2min_log;
+	const double rmin = 0.0045, rmax = 0.0075;
+	const double logRRatioMax = std::log(rmax / rmin);
+	if (d2min_fileout)
 	{
-		typedef std::vector<std::pair<int, std::string>> sortable_output;
-		double neighbors_rangeCoeff;
-		//had to hard-code it because cin cannot tolerate spaces
-		//std::string prefix = "/media/scratch/Synced/DEM_data/AR=2.56/ForBetweenness4-long/DEM/postxyz/particle", outFilePrefix;
-		std::string prefix = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/DEM/postxyz/particle", d2minout = "/mnt/DEMDAA/AR=2.56/ForBetweenness4-long/d2min", outFilePrefix;
-		int numType;
-		int minTraj, maxTraj, trajIncrement, maxDataSetSize, minusStep, d2min_fileout;
-		std::cin >> minTraj >> maxTraj >> trajIncrement >> maxDataSetSize;
-		std::cin >> neighbors_rangeCoeff;
-		std::cin >> outFilePrefix;
-		std::cin >> numType;
-		std::vector<std::pair<int, std::stringstream>> vsoft, hard;
-		double d2minBound, d2minRange;
-		std::cin >> d2minBound >> d2minRange;
-		std::cin >> minusStep;
-		std::cin >> d2min_fileout;
-		std::cerr << minusStep << "\n";
+		std::stringstream d2min_file;
+		d2min_file << d2minout << "/log.txt";
+		d2min_log.open(d2min_file.str());
+	}
+	//need an array of fstreams, which cannot be copied
+	//so use unique_ptr instead
+	std::vector<std::unique_ptr<std::fstream>> ofiles, ofileh, ofile_sh;
+	std::vector<sortable_output> ovsoft, ovhard;
+	for (int i = 0; i < numType; i++)
+	{
+		std::stringstream sss, ssh, sshf;
+		std::cerr << outFilePrefix << std::endl;
+		sss << outFilePrefix << "soft" << i << ".txt";
+		ssh << outFilePrefix << "hard" << i << ".txt";
+		sshf << "soft_hard_ts_" << outFilePrefix << "_" << i << "_d2min_" << d2minBound << ".txt";
+		ofiles.push_back(std::move(std::unique_ptr<std::fstream>(new std::fstream(sss.str(), std::fstream::out))));
+		ofileh.push_back(std::move(std::unique_ptr<std::fstream>(new std::fstream(ssh.str(), std::fstream::out))));
+		ofile_sh.push_back(std::move(std::unique_ptr<std::fstream>(new std::fstream(sshf.str(), std::fstream::out))));
+		ovsoft.push_back(sortable_output(maxDataSetSize));
+		ovhard.push_back(sortable_output(maxDataSetSize));
+	}
 
-		const double rmin = 0.0045, rmax = 0.0075;
-		const double logRRatioMax = std::log(rmax / rmin);
+	auto addSfFunc = [&](const Configuration &c0, size_t i, std::ostream &output, const AtomInfo &info) -> void {
+		double radius = info.radius;
 
-		//need an array of fstreams, which cannot be copied
-		//so use unique_ptr instead
-		std::vector<std::unique_ptr<std::fstream>> ofiles, ofileh;
-		std::vector<sortable_output> ovsoft, ovhard;
-		for (int i = 0; i < numType; i++)
+		std::stringstream ss;
+		ss << radius << " ";
+
+		double neighbor_range = 2 * rmax * neighbors_rangeCoeff;
+
+		auto outputFunc = [&](const GeometryVector &shift, const GeometryVector &LatticeShift, const signed long *PeriodicShift, const size_t Sourceparticle) -> void {
+			double r = std::sqrt(shift.Modulus2());
+
+			//new trial : normalize by effective contact radius
+			double d1 = radius;
+			double d2 = c0.GetCharacteristics(Sourceparticle).radius;
+			double d = (d1 + d2);
+			double normalizedR = r / d;
+			if (r > 0.0 && normalizedR < neighbors_rangeCoeff)
+				ss << (char)('A' + std::floor((logRRatioMax + std::log(c0.GetCharacteristics(Sourceparticle).radius / radius)) / (2 * logRRatioMax) * numType)) << " " << normalizedR << " ";
+		};
+		c0.IterateThroughNeighbors(i, neighbor_range, outputFunc);
+		ss << "\n";
+#pragma omp critical(output)
 		{
-			std::stringstream sss, ssh;
-			sss << outFilePrefix << "soft" << i << ".txt";
-			ssh << outFilePrefix << "hard" << i << ".txt";
-			ofiles.push_back(std::move(std::unique_ptr<std::fstream>(new std::fstream(sss.str(), std::fstream::out))));
-			ofileh.push_back(std::move(std::unique_ptr<std::fstream>(new std::fstream(ssh.str(), std::fstream::out))));
-			ovsoft.push_back(sortable_output(maxDataSetSize));
-			ovhard.push_back(sortable_output(maxDataSetSize));
+			output << ss.str();
+			output.flush();
 		}
+	};
 
-		auto addSfFunc = [&](const Configuration &c0, size_t i, std::ostream &output, const AtomInfo &info) -> void {
-			double radius = info.radius;
+	//New Outputfunction with sortable vectors.
+	auto addSfVecFunc = [&](const Configuration &c0, size_t i, sortable_output &output, const AtomInfo &info, const int ts) -> void {
+		double radius = info.radius;
+		std::stringstream ss;
+		ss << ts << " " << radius << " ";
 
-			std::stringstream ss;
-			ss << radius << " ";
+		double neighbor_range = 2 * rmax * neighbors_rangeCoeff;
 
-			double neighbor_range = 2 * rmax * neighbors_rangeCoeff;
+		auto outputFunc = [&](const GeometryVector &shift, const GeometryVector &LatticeShift, const signed long *PeriodicShift, const size_t Sourceparticle) -> void {
+			double r = std::sqrt(shift.Modulus2());
 
-			auto outputFunc = [&](const GeometryVector &shift, const GeometryVector &LatticeShift, const signed long *PeriodicShift, const size_t Sourceparticle) -> void {
-				double r = std::sqrt(shift.Modulus2());
-
-				//new trial : normalize by effective contact radius
-				double d1 = radius;
-				double d2 = c0.GetCharacteristics(Sourceparticle).radius;
-				double d = (d1 + d2);
-				double normalizedR = r / d;
-				if (r > 0.0 && normalizedR < neighbors_rangeCoeff)
-					ss << (char)('A' + std::floor((logRRatioMax + std::log(c0.GetCharacteristics(Sourceparticle).radius / radius)) / (2 * logRRatioMax) * numType)) << " " << normalizedR << " ";
-			};
-			c0.IterateThroughNeighbors(i, neighbor_range, outputFunc);
-			ss << "\n";
-#pragma omp critical(output)
-			{
-				output << ss.str();
-				output.flush();
-			}
+			//new trial : normalize by effective contact radius
+			double d1 = radius;
+			double d2 = c0.GetCharacteristics(Sourceparticle).radius;
+			double d = (d1 + d2);
+			double normalizedR = r / d;
+			if (r > 0.0 && normalizedR < neighbors_rangeCoeff)
+				ss << (char)('A' + std::floor((logRRatioMax + std::log(c0.GetCharacteristics(Sourceparticle).radius / radius)) / (2 * logRRatioMax) * numType)) << " " << normalizedR << " ";
 		};
-
-		//New Outputfunction with sortable vectors.
-		auto addSfVecFunc = [&](const Configuration &c0, size_t i, sortable_output &output, const AtomInfo &info, const int ts) -> void {
-			double radius = info.radius;
-			std::stringstream ss;
-			ss << ts << " " << radius << " ";
-
-			double neighbor_range = 2 * rmax * neighbors_rangeCoeff;
-
-			auto outputFunc = [&](const GeometryVector &shift, const GeometryVector &LatticeShift, const signed long *PeriodicShift, const size_t Sourceparticle) -> void {
-				double r = std::sqrt(shift.Modulus2());
-
-				//new trial : normalize by effective contact radius
-				double d1 = radius;
-				double d2 = c0.GetCharacteristics(Sourceparticle).radius;
-				double d = (d1 + d2);
-				double normalizedR = r / d;
-				if (r > 0.0 && normalizedR < neighbors_rangeCoeff)
-					ss << (char)('A' + std::floor((logRRatioMax + std::log(c0.GetCharacteristics(Sourceparticle).radius / radius)) / (2 * logRRatioMax) * numType)) << " " << normalizedR << " ";
-			};
-			c0.IterateThroughNeighbors(i, neighbor_range, outputFunc);
-			ss << "\n";
+		c0.IterateThroughNeighbors(i, neighbor_range, outputFunc);
+		ss << "\n";
 #pragma omp critical(output)
-			{
-				output.push_back(std::make_pair(ts, ss.str()));
-			}
-		};
-		std::map<int, std::pair<double, double>> ts_d2min, ts_affine;
-		std::vector<size_t> nsoft(numType, 0), nhard(numType, 0);
-#pragma omp parallel for
-		for (int j = minTraj; j < maxTraj - 1; j += trajIncrement)
 		{
-			std::stringstream ss0, ss1, ss2;
-			ss0 << prefix << j;
-			ss1 << prefix << (j + trajIncrement);
-			int offset = j - (minusStep * trajIncrement);
-			ss2 << prefix << offset;
+			output.push_back(std::make_pair(ts, ss.str()));
+		}
+	};
+	std::map<int, std::pair<double, double>> ts_d2min, ts_affine;
+	std::vector<size_t> nsoft(numType, 0), nhard(numType, 0);
+	std::map<int, std::pair<double, double>> map_soft_hard;
+#pragma omp parallel for schedule(dynamic)
+	for (int j = minTraj; j < maxTraj - 1; j += trajIncrement)
+	{
+		std::stringstream ss0, ss1, ss2;
+		ss0 << prefix << j;
+		ss1 << prefix << (j + trajIncrement);
+		int offset = j - (minusStep * trajIncrement);
+		ss2 << prefix << offset;
+		map_soft_hard[j] = std::make_pair(0, 0);
+		Configuration c0 = readOmidPacking(ss0.str());
+		Configuration c1 = readOmidPacking(ss1.str());
+		Configuration c2 = readOmidPacking(ss2.str());
 
-			/*std::cerr << "ss0: " << ss0.str() << "\n";
-			std::cerr  << "ss1: " << ss1.str() << "\n";
-			std::cerr  << "ss2: " << ss2.str() << "\n";
-	        if (!(file_exist(ss0) && file_exist(ss1) && file_exist(ss2)))
+		if (c0.NumParticle() != 0)
+		{
+			std::vector<double> d2min(c0.NumParticle()-1, 0.0);
+			//long double avg = std::accumulate(d2min.begin(), d2min.end(), 0.0);
+			if (d2min_fileout && numType == 1)
 			{
-				std::cerr << file_exist(ss0) << " " << ss2.str() << " " << file_exist(ss1) << " " << file_exist(ss2) << "\n";
-				continue;
-			}*/
-			Configuration c0 = readOmidPacking(ss0.str());
-			Configuration c1 = readOmidPacking(ss1.str());
-			Configuration c2 = readOmidPacking(ss2.str());
-
-			if (c0.NumParticle() != 0)
-			{
-				std::vector<double> d2min(c0.NumParticle(), 0.0);
-
-				//long double avg = std::accumulate(d2min.begin(), d2min.end(), 0.0);
-				if (d2min_fileout)
+				std::vector<double> affine_trans(c0.NumParticle()-1, 0.0);
+				for (int i = 0; i < c0.NumParticle(); i++)
+					d2min[i] = ::D2Min(c0, c1, i, d2minRange, &affine_trans[i]);
+				std::stringstream fname_d2min, fname_affine;
+				fname_d2min << d2minout << "/"
+							<< "d2min_" << std::setw(9) << std::setfill('0') << j << ".txt";
+				fname_affine << d2minout << "/"
+							 << "affine_" << std::setw(9) << std::setfill('0') << j << ".txt";
+				std::ofstream outf_d2min(fname_d2min.str());
+				std::ofstream outf_affine(fname_affine.str());
+				double d2min_sum{0};
+				for (auto &e : d2min)
 				{
-					std::vector<double> affine_trans(c0.NumParticle(), 0.0);
-					for (int i = 0; i < c0.NumParticle(); i++)
-						d2min[i] = ::D2Min(c0, c1, i, d2minRange, &affine_trans[i]);
-					std::stringstream fname_d2min, fname_affine;
-					fname_d2min << d2minout << "/"
-								<< "d2min_" << std::setw(9) << std::setfill('0') << j << ".txt";
-					fname_affine << d2minout << "/"
-								 << "affine_" << std::setw(9) << std::setfill('0') << j << ".txt";
-					std::ofstream outf_d2min(fname_d2min.str());
-					std::ofstream outf_affine(fname_affine.str());
-					double d2min_sum{0};
-					for (auto const &e : d2min)
+					if (!std::isnan(e))
 					{
-						if (!std::isnan(e))
-							d2min_sum += e;
-						outf_d2min << e << "\n";
-					}
-					outf_d2min.close();
-					double affine_sum{0};
-					for (auto const &e : affine_trans)
-					{
-						if (!std::isnan(e))
-							affine_sum += e;
-						outf_affine << e << "\n";
-					}
-					outf_affine.close();
-#pragma omp critical
-					{
-						ts_d2min[j] = std::make_pair(d2min_sum, d2min_sum / c0.NumParticle());
-						ts_affine[j] = std::make_pair(affine_sum, affine_sum / c0.NumParticle());
-					}
-				}
-				else
-				{
-					for (int i = 0; i < c0.NumParticle(); i++)
-						d2min[i] = ::D2Min(c0, c1, i, d2minRange);
-				}
-				for (int i = 0; i < c2.NumParticle(); i++)
-				{
-					int type = std::floor(std::log(c2.GetCharacteristics(i).radius / rmin) / logRRatioMax * numType);
-					//std::cerr << type << "\n";
-					if (type < 0)
-					{
-						std::cerr << "warning : radius less than rmin, file=" << ss0.str() << ", i=" << i << ", radius=" << c2.GetCharacteristics(i).radius << std::endl;
-						continue;
-					}
-					else if (type >= numType)
-					{
-						std::cerr << "warning : radius less than rmin, file=" << ss0.str() << ", i=" << i << ", radius=" << c2.GetCharacteristics(i).radius << std::endl;
-						continue;
-					}
-					bool outputS = false, outputH = false;
-#pragma omp critical(determineType)
-					{
-						if (d2min[i] > d2minBound && nsoft[type] < maxDataSetSize)
+						if (e < 0)
 						{
+							e = 0;
+						}
+						d2min_sum += e;
+						if (e < -1e-5)
+						{
+
+#pragma omp critical
+							d2min_log << "NEG! "
+									  << "ts: " << j << " Particle: " << &e - &d2min[0] << " Value: " << e << "\n";
+						}
+					}
+
+					outf_d2min << e << "\n";
+				}
+				outf_d2min.close();
+				double affine_sum{0};
+				for (auto const &e : affine_trans)
+				{
+					if (!std::isnan(e))
+					{
+
+						affine_sum += e;
+					}
+					outf_affine << e << "\n";
+				}
+				outf_affine.close();
+#pragma omp critical
+				{
+					ts_d2min[j] = std::make_pair(d2min_sum, d2min_sum / c0.NumParticle());
+					ts_affine[j] = std::make_pair(affine_sum, affine_sum / c0.NumParticle());
+				}
+			}
+			else
+			{
+				for (int i = 0; i < c0.NumParticle(); i++)
+					d2min[i] = ::D2Min(c0, c1, i, d2minRange);
+			}
+			for (int i = 0; i < c2.NumParticle(); i++)
+			{
+				int type = std::floor(std::log(c2.GetCharacteristics(i).radius / rmin) / logRRatioMax * numType);
+
+				if (type < 0)
+				{
+					std::cerr << "warning : radius less than rmin, file=" << ss0.str() << ", i=" << i << ", radius=" << c2.GetCharacteristics(i).radius << std::endl;
+					continue;
+				}
+				else if (type >= numType)
+				{
+					std::cerr << "warning : radius less than rmin, file=" << ss0.str() << ", i=" << i << ", radius=" << c2.GetCharacteristics(i).radius << std::endl;
+					continue;
+				}
+				bool outputS = false, outputH = false;
+#pragma omp critical(determineType)
+				if (d2min[i] < 0)
+				{
+					d2min[i] = 0;
+					if (d2min[i] > d2minBound)
+					{
+						map_soft_hard[j].first++;
+						if (nsoft[type] < maxDataSetSize)
+						{
+
 							nsoft[type]++;
 							outputS = true;
 						}
-						else if (d2min[i] < d2minBound && nhard[type] < nsoft[type])
+					}
+					else if (d2min[i] < d2minBound)
+					{
+						map_soft_hard[j].second++;
+						if (nhard[type] < nsoft[type])
 						{
 							nhard[type]++;
 							outputH = true;
@@ -919,48 +946,46 @@ int Debug()
 						addSfVecFunc(c2, i, ovhard[type], c2.GetCharacteristics(i), j);
 				}
 			}
+			std::cerr << "j: " << j << "\n";
 		}
-#pragma omp parallel for
-		for (int i = 0; i < numType; i++)
+	}
+
+	for (int i = 0; i < numType; i++)
+	{
+		std::sort(ovhard[i].begin(), ovhard[i].end());
+		std::sort(ovsoft[i].begin(), ovsoft[i].end());
+		for (const auto &e : ovhard[i])
 		{
-			std::sort(ovhard[i].begin(), ovhard[i].end());
-			std::sort(ovsoft[i].begin(), ovsoft[i].end());
-			for (const auto &e : ovhard[i])
-			{
-				*ofileh[i] << e.second;
-			}
-			for (const auto &e : ovsoft[i])
-			{
-				*ofiles[i] << e.second;
-			}
+			*ofileh[i] << e.second;
+		}
+		for (const auto &e : ovsoft[i])
+		{
+			*ofiles[i] << e.second;
+		}
+		*ofile_sh[i] << "ts soft hard\n";
+		for (auto &e : map_soft_hard)
+		{
+			*ofile_sh[i] << e.first << " " << e.second.first << " " << e.second.second << "\n";
+		}
+	}
+
+	if (d2min_fileout && numType == 1)
+	{
+		std::stringstream ss_d2min, ss_affine;
+		ss_d2min << d2minout << "/ts_d2min.txt";
+		ss_affine << d2minout << "/ts_affine.txt";
+		std::ofstream of_d2min(ss_d2min.str()), of_affine(ss_affine.str());
+		of_d2min << "ts sum avg\n";
+		of_affine << "ts sum avg\n";
+		for (auto const &elem : ts_d2min)
+		{
+			of_d2min << elem.first << " " << elem.second.first << " " << elem.second.second << "\n";
 		}
 
-		if (d2min_fileout)
+		for (auto const &elem : ts_affine)
 		{
-			std::stringstream ss_d2min, ss_affine;
-			ss_d2min << d2minout << "/ts_d2min.txt";
-			ss_affine << d2minout << "/ts_affine.txt";
-			std::ofstream of_d2min(ss_d2min.str()), of_affine(ss_affine.str());
-			of_d2min << "ts sum avg\n";
-			of_affine << "ts sum avg\n";
-#pragma omp parallel sections
-			{
-#pragma omp section
-				{
-					for (auto const &elem : ts_d2min)
-					{
-						of_d2min << elem.first << " " << elem.second.first << " " << elem.second.second << "\n";
-					}
-				}
-#pragma omp section 
-				{
-					for (auto const &elem : ts_affine)
-					{
-						of_affine << elem.first << " " << elem.second.first << " " << elem.second.second << "\n";
-					}
-				}
-			}
+			of_affine << elem.first << " " << elem.second.first << " " << elem.second.second << "\n";
 		}
-		return 0;
 	}
+	return 0;
 }
