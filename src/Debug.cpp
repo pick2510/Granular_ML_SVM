@@ -658,7 +658,7 @@ Configuration readOmidPacking(std::fstream &ifile, const std::string &fname)
 {
 	if (!ifile.good())
 		return Configuration();
-	GeometryVector bas[3] = {GeometryVector(0.65, 0.0, 0.0), GeometryVector(0.0, 0.4, 0.0), GeometryVector(0.0, 0.0, 0.4)};
+	GeometryVector bas[3] = {GeometryVector(0.65, 0.0, 0.0), GeometryVector(0.0, 0.4, 0.0), GeometryVector(0.0, 0.0, 0.08)};
 	Configuration pak(3, bas, 0.008, false);
 	struct particle
 	{
@@ -835,11 +835,11 @@ int Debug()
 
 		if (c0.NumParticle() != 0)
 		{
-			std::vector<double> d2min(c0.NumParticle()-1, 0.0);
+			std::vector<double> d2min(c0.NumParticle() - 1, 0.0);
 			//long double avg = std::accumulate(d2min.begin(), d2min.end(), 0.0);
 			if (d2min_fileout && numType == 1)
 			{
-				std::vector<double> affine_trans(c0.NumParticle()-1, 0.0);
+				std::vector<double> affine_trans(c0.NumParticle() - 1, 0.0);
 				for (int i = 0; i < c0.NumParticle(); i++)
 					d2min[i] = ::D2Min(c0, c1, i, d2minRange, &affine_trans[i]);
 				std::stringstream fname_d2min, fname_affine;
